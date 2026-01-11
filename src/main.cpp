@@ -38,6 +38,9 @@ public:
         gfx2D.FillRect(15, 20, 25, 30);
         gfx2D.Text(15, 35, str, 1, 2);
         gfx2D.ImagePPM(L"Sprite-32x32.ppm", 30, 60);
+        gfx2D.Polygon({{ 0, 95 },{ 35, 95 },{ 25, 120 },{ 15, 120 }});
+        gfx2D.FillPolygon({{ 50, 95 },{ 85, 95 },{ 75, 120 },{ 65, 120 }});
+
     }
 
     void onShutdown() override {

@@ -5,6 +5,8 @@
 /// Resource imports
 #include <windows.h>
 #include <string>
+#include <vector>
+#include <array>
 //
 /// NameSpace Rendering manager
 namespace termat::gfx {
@@ -79,10 +81,11 @@ namespace termat::gfx {
         void Triangle(int x1, int y1, int x2, int y2, int x3, int y3, short c = 0x2588, short col = 0x000F);
         void FillTriangle(int x1, int y1, int x2, int y2, int x3, int y3, short c = 0x2588, short col = 0x000F);
         void Rect(int x1, int y1, int x2, int y2, short c = 0x2588, short col = 0x000F);
-
         void FillRect(int x1, int y1, int x2, int y2, short c = 0x2588, short col = 0x000F);
         void Circle(int xc, int yc, int r, short c = 0x2588, short col = 0x000F);
         void FillCircle(int xc, int yc, int r, short c = 0x2588, short col = 0x000F);
+        void Polygon(const std::vector<std::array<int, 2>>& points, short c = 0x2588, short col = 0x000F);
+        void FillPolygon(const std::vector<std::pair<int, int>>& pts, short c = 0x2588, short col = 0x000F);
 
         // Fonts Drawners
         void Char(int x, int y, wchar_t ch, int scale = 1, int spacing = 1, short c = 0x2588, short col = 0x000F);

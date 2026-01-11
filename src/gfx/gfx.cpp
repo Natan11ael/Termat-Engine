@@ -3,6 +3,7 @@
 /// Resource imports
 #include <termat/gfx.hpp>
 //
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <cmath>
@@ -343,6 +344,58 @@ namespace termat::gfx {
             else p += 4 * (x++ - y--) + 10;
         }
     };
+
+    void Renderer2D::Polygon(const std::vector<std::array<int, 2>>& points, short c, short col) {
+        if (!m_targetBuffer) return;
+        if (points.size() < 3) return; // polígono precisa de no mínimo 3 pontos
+
+        for (size_t i = 0; i < points.size(); i++) {
+            const auto& p1 = points[i];
+            const auto& p2 = points[(i + 1) % points.size()]; // fecha o polígono
+
+            Line(p1[0], p1[1], p2[0], p2[1], c, col);
+        }
+    }
+
+    void Renderer2D::FillPolygon(const std::vector<std::pair<int, int>>& pts, short c, short col) {
+        if (!m_targetBuffer || pts.size() < 3) return;
+
+        // Encontrar limites em Y
+        int minY = pts[0].second;
+        int maxY = pts[0].second;
+
+        for (const auto& p : pts) {
+            if (p.second < minY) minY = p.second;
+            if (p.second > maxY) maxY = p.second;
+        }
+
+        // Scanline
+        for (int y = minY; y <= maxY; y++) {
+            std::vector<int> nodes;
+
+            size_t j = pts.size() - 1;
+            for (size_t i = 0; i < pts.size(); i++) {
+                int x1 = pts[i].first;
+                int y1 = pts[i].second;
+                int x2 = pts[j].first;
+                int y2 = pts[j].second;
+
+                if ((y1 < y && y2 >= y) || (y2 < y && y1 >= y)) {
+                    int x = x1 + (y - y1) * (x2 - x1) / (y2 - y1);
+                    nodes.push_back(x);
+                }
+                j = i;
+            }
+
+            std::sort(nodes.begin(), nodes.end());
+
+            for (size_t i = 0; i + 1 < nodes.size(); i += 2) {
+                for (int x = nodes[i]; x <= nodes[i + 1]; x++) {
+                    Pixel(x, y, c, col);
+                }
+            }
+        }
+    }
 
     void Renderer2D::Char(int x, int y, wchar_t ch, int scale, int spacing, short c, short col) {
         if (!m_targetBuffer) return;
