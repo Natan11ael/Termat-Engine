@@ -29,6 +29,9 @@ add_library(termat STATIC ${ENGINE_SOURCES})
 target_include_directories(termat PUBLIC
     ${CMAKE_SOURCE_DIR}/src/include
 )
+target_compile_definitions(termat PUBLIC
+    ASSETS_PATH="${CMAKE_SOURCE_DIR}/assets/"
+)
 
 # --- Executável do usuário
 add_executable(main ${CMAKE_SOURCE_DIR}/src/main.cpp)

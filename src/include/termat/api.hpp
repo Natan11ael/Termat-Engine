@@ -14,6 +14,7 @@
 #include <variant>
 #include <chrono>
 #include <vector>
+#include <array>
 #include <list>
 #include <thread>
 #include <atomic>
@@ -139,6 +140,9 @@ namespace termat {
                 SetConsoleActiveScreenBuffer(m_hOriginalConsole);
 		        delete[] m_bufScreen;
             };
+
+            // Instancias de Acesso
+            std::array<int, 2> getWindowSize() const { return { m_width, m_height }; }
 
             // Instancias de Definição
             void setTitle(const std::wstring& title) {
