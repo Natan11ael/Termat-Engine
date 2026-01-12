@@ -11,7 +11,7 @@ private:
     double acc = 0.0;
 
 public:
-	HelloApp() : Application(280, 180, L"AppName", 3, 3) {}
+	HelloApp() : Application(128, 64, L"AppName", 8, 8) {}
 
     void onInit() override {
         gfx2D.String(0, 0, L"[HelloApp][Msg]: onInit()");
@@ -27,20 +27,32 @@ public:
         auto [ w, h ] = getWindowSize();
         gfx2D.FillRect(0, 0, w, h, termat::gfx::PIXEL_SOLID, termat::gfx::FG_BLACK | termat::gfx::BG_BLACK);
         
-        const std::wstring str = std::format(L"HELLO WORLD!\nFRAME:{}", acc);
-        gfx2D.String(0, 1, str);
-        gfx2D.Line(0, 5, 10, 10);
-        gfx2D.Triangle(0, 15, 0, 20, 10, 20);
-        gfx2D.FillTriangle(0, 25, 0, 30, 10, 30);
-        gfx2D.Circle(5, 40, 5);
-        gfx2D.FillCircle(5, 55, 5);
-        gfx2D.Rect(15, 5, 25, 15);
-        gfx2D.FillRect(15, 20, 25, 30);
-        gfx2D.Text(15, 35, str, 1, 2);
-        gfx2D.ImagePPM(L"Sprite-32x32.ppm", 30, 60);
-        gfx2D.Polygon({{ 0, 95 },{ 35, 95 },{ 25, 120 },{ 15, 120 }});
-        gfx2D.FillPolygon({{ 50, 95 },{ 85, 95 },{ 75, 120 },{ 65, 120 }});
+        const int x = 5;
+        auto start = std::chrono::high_resolution_clock::now();
 
+        // null // ~.6 us
+        // gfx2D.Pixel(x*0, 1); // ~1 us
+        // gfx2D.Line(x*1, 1, x*2-1, x); // ~3 us
+        // gfx2D.Rect(x*2+1, 1, x*3+1, x+1); // ~3 us
+        // gfx2D.FillRect(x*3+2, 1, x*4+2, x+1); // ~1 us
+        // gfx2D.Triangle(x*4+3, 1, x*4+3, x, x*5+2, 1); // ~4 us
+        // gfx2D.FillTriangle(x*5+4, 1, x*5+4, x, x*6+3, 1); // ~4 us
+        // gfx2D.Ellipse(x*6+7, 3, 2, 2); // ~4 us
+        // gfx2D.FillEllipse(x*7+8, 3, 2, 2); // ~4 us
+
+        gfx2D.Polygon({{ 0, 95 },{ 35, 95 },{ 25, 120 },{ 15, 120 }}); // ~70 us
+        // gfx2D.FillPolygon({{ 50, 95 },{ 85, 95 },{ 75, 120 },{ 65, 120 }});  // ~300 us
+
+        // gfx2D.Text(15, 35, L"HI", 1, 2); // ~60 us
+        // gfx2D.ImagePPM(L"Sprite-32x32.ppm", 60, 0); // ~1200 us
+        
+        // all // ~22 us
+
+        auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double, std::micro> duration = end - start;
+
+        const std::wstring str = std::format(L"HELLO WORLD! FRAME:{} Drawner:{}", acc, duration);
+        gfx2D.String(0, 0, str);
     }
 
     void onShutdown() override {
@@ -54,3 +66,18 @@ int main() {
     // Certifique-se de linkar com a lib "termat" (termat.lib) ao compilar.
     return termat::api::Run(app);
 }
+// 8:8
+// - 64x64 - 1:1
+// - 128x64 - 2:1
+//
+// 6:6
+// - 96x96 - 1:1
+// - 128x96 - 2:1
+//
+// 4:4
+// - 128x128 - 1:1
+// - 256x128 - 2:1
+//
+// 2:2
+// - 256x256 - 1:1
+// - 512x256 - 2:1

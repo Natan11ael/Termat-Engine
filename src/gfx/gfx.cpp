@@ -88,7 +88,7 @@ namespace termat::gfx {
         m_width = w; m_height = h;
     }
     //
-    void Renderer::Pixel(int x, int y, short c, short col) {
+    inline void Renderer::Pixel(int x, int y, short c, short col) {
         if (!m_targetBuffer) return;
         if (x < 0 || x >= m_width || y < 0 || y >= m_height) return;
 
@@ -98,7 +98,7 @@ namespace termat::gfx {
 
     /// ================= Renderer2D =================
     //
-    void Renderer2D::Clip(int &x, int &y) {
+    inline void Renderer2D::Clip(int &x, int &y) {
         if (x < 0) x = 0;
         if (x >= m_width) x = m_width - 1;
         if (y < 0) y = 0;
@@ -108,48 +108,105 @@ namespace termat::gfx {
     void Renderer2D::String(int x, int y, std::wstring c, short col) {
         if (!m_targetBuffer) return;
         for (size_t i = 0; i < c.size(); i++) {
-           int px = x + (int)i;
+            int px = x + (int)i;
             if (px < 0 || px >= m_width || y < 0 || y >= m_height) continue;
             m_targetBuffer[y * m_width + px].Char.UnicodeChar = c[i];
             m_targetBuffer[y * m_width + px].Attributes = col;
         }
     }
 
-    void Renderer2D::Line(int x1, int y1, int x2, int y2, short c, short col) {
-        int x, y, dx, dy, dx1, dy1, px, py, xe, ye, i;
-        dx = x2 - x1; dy = y2 - y1;
-        dx1 = abs(dx); dy1 = abs(dy);
-        px = 2 * dy1 - dx1;	py = 2 * dx1 - dy1;
-        if (dy1 <= dx1) {
-            if (dx >= 0) { x = x1; y = y1; xe = x2; }
-            else { x = x2; y = y2; xe = x1;}
-            Pixel(x, y, c, col);
-            
-            for (i = 0; x<xe; i++) {
-                x = x + 1;
-                if (px<0) px = px + 2 * dy1;
-                else {
-                    if ((dx<0 && dy<0) || (dx>0 && dy>0)) y = y + 1; else y = y - 1;
-                    px = px + 2 * (dy1 - dx1);
-                }
-                Pixel(x, y, c, col);
+    void Renderer2D::Line(int x0, int y0, int x1, int y1, short c, short col) {
+        int dx = abs(x1 - x0), sx = (x0 < x1) ? 1 : -1;
+        int dy = abs(y1 - y0), sy = (y0 < y1) ? 1 : -1;
+        int err = dx - dy, e2;
+
+        while (true) {
+            // Só desenha se estiver dentro dos limites do buffer
+            if (x0 >= 0 && x0 < m_width && y0 >= 0 && y0 < m_height) { // Calculamos o ponteiro apenas se estiver visível
+                m_targetBuffer[y0 * m_width + x0].Char.UnicodeChar = c;
+                m_targetBuffer[y0 * m_width + x0].Attributes = col;
+            }
+
+            if (x0 == x1 && y0 == y1) break;
+
+            e2 = 2 * err;
+            if (e2 > -dy) { err -= dy; x0 += sx; }
+            if (e2 < dx) { err += dx; y0 += sy; }
+        }
+    }
+
+    void Renderer2D::Rect(int x1, int y1, int x2, int y2, short c, short col) {
+        // 1. Limites de segurança para os loops (Evita crash)
+        int left   = (std::max)(0, x1);
+        int right  = (std::min)(m_width - 1, x2 - 1);
+        int top    = (std::max)(0, y1);
+        int bottom = (std::min)(m_height - 1, y2 - 1);
+
+        // Se o retângulo está totalmente fora da tela, sai fora
+        if (left > right || top > bottom) return;
+
+        uint32_t pixelData = (uint32_t)col << 16 | (uint16_t)c;
+        uint32_t* buffer = (uint32_t*)m_targetBuffer;
+
+        // --- LINHAS HORIZONTAIS ---
+        // Só desenha a borda superior se o Y original estiver na tela
+        if (y1 >= 0 && y1 < m_height) {
+            uint32_t* p = &buffer[y1 * m_width + left];
+            for (int x = left; x <= right; ++x) *p++ = pixelData;
+        }
+
+        // Só desenha a borda inferior se o Y original estiver na tela (e for diferente do topo)
+        if (y2 - 1 >= 0 && y2 - 1 < m_height && (y2 - 1 != y1)) {
+            uint32_t* p = &buffer[(y2 - 1) * m_width + left];
+            for (int x = left; x <= right; ++x) *p++ = pixelData;
+        }
+
+        // --- LINHAS VERTICAIS ---
+        // Só desenha a borda esquerda se o X original estiver na tela
+        if (x1 >= 0 && x1 < m_width) {
+            uint32_t* p = &buffer[top * m_width + x1];
+            // Note: aqui usamos 'top' e 'bottom' clipados para o loop ser seguro
+            for (int y = top; y <= bottom; ++y) {
+                *p = pixelData;
+                p += m_width;
             }
         }
-        else {
-            if (dy >= 0) { x = x1; y = y1; ye = y2; }
-            else { x = x2; y = y2; ye = y1; }
 
-            Pixel(x, y, c, col);
-
-            for (i = 0; y<ye; i++) {
-                y = y + 1;
-                if (py <= 0) py = py + 2 * dx1;
-                else {
-                    if ((dx<0 && dy<0) || (dx>0 && dy>0)) x = x + 1; else x = x - 1;
-                    py = py + 2 * (dx1 - dy1);
-                }
-                Pixel(x, y, c, col);
+        // Só desenha a borda direita se o X original estiver na tela
+        if (x2 - 1 >= 0 && x2 - 1 < m_width && (x2 - 1 != x1)) {
+            uint32_t* p = &buffer[top * m_width + (x2 - 1)];
+            for (int y = top; y <= bottom; ++y) {
+                *p = pixelData;
+                p += m_width;
             }
+        }
+    }
+
+    void Renderer2D::FillRect(int x1, int y1, int x2, int y2, short c, short col) {
+        int left = (std::max)(0, x1);
+        int right = (std::min)(m_width, x2);
+        int top = (std::max)(0, y1);
+        int bottom = (std::min)(m_height, y2);
+
+        if (left >= right || top >= bottom) return;
+
+        uint32_t pixelData = (uint32_t)col << 16 | (uint16_t)c;
+        uint64_t doublePixel = ((uint64_t)pixelData << 32) | pixelData; // 2 pixels em 64 bits
+        uint32_t* buffer = (uint32_t*)m_targetBuffer;
+        int widthToFill = right - left;
+
+        for (int y = top; y < bottom; ++y) {
+            uint32_t* pRow = &buffer[y * m_width + left];
+            int x = 0;
+
+            // Processa 4 pixels de uma vez usando uint64_t (2 escritas de 64 bits)
+            for (; x <= widthToFill - 4; x += 4) {
+                *(uint64_t*)(pRow + x) = doublePixel;
+                *(uint64_t*)(pRow + x + 2) = doublePixel;
+            }
+
+            // Limpa os pixels restantes (caso a largura não seja múltipla de 4)
+            for (; x < widthToFill; ++x) pRow[x] = pixelData;
         }
     }
 
@@ -160,190 +217,177 @@ namespace termat::gfx {
     }
 
     void Renderer2D::FillTriangle(int x1, int y1, int x2, int y2, int x3, int y3, short c, short col) {
-        auto SWAP = [](int &x, int &y) { int t = x; x = y; y = t; };
-        auto drawline = [&](int sx, int ex, int ny) { for (int i = sx; i <= ex; i++) Pixel(i, ny, c, col); };
+        // 1. Sort Vertices por Y (y1 <= y2 <= y3)
+        if (y1 > y2) { std::swap(y1, y2); std::swap(x1, x2); }
+        if (y1 > y3) { std::swap(y1, y3); std::swap(x1, x3); }
+        if (y2 > y3) { std::swap(y2, y3); std::swap(x2, x3); }
+
+        if (y1 == y3) return; // Triângulo sem altura
+
+        uint32_t pixelData = (uint32_t)col << 16 | (uint16_t)c;
+        uint32_t* buffer = (uint32_t*)m_targetBuffer;
+
+        // Lambda para preencher a linha horizontal de forma ultra-rápida
+        auto drawHLine = [&](int xStart, int xEnd, int y) {
+            if (y < 0 || y >= m_height) return;
+            if (xStart > xEnd) std::swap(xStart, xEnd);
+            int left = (std::max)(0, xStart);
+            int right = (std::min)(m_width - 1, xEnd);
+            if (left <= right) {
+                uint32_t* p = &buffer[y * m_width + left];
+                // Uso de ponteiro direto: Auge da performance
+                for (int i = 0; i <= (right - left); ++i) p[i] = pixelData;
+            }
+        };
+
+        // 2. Cálculo dos passos (Slopes) usando Ponto Fixo (multiplicado por 1024 para evitar float)
+        // Usamos 16.16 bits ou apenas float se a CPU for moderna (2026 floats são rápidos)
+        auto getStep = [](int xA, int yA, int xB, int yB) {
+            if (yA == yB) return 0.0f;
+            return (float)(xB - xA) / (float)(yB - yA);
+        };
+
+        float step13 = getStep(x1, y1, x3, y3);
+        float step12 = getStep(x1, y1, x2, y2);
+        float step23 = getStep(x2, y2, x3, y3);
+
+        float curX1 = (float)x1;
+        float curX2 = (float)x1;
+
+        // 3. Parte Superior: do y1 até y2
+        for (int y = y1; y < y2; y++) {
+            drawHLine((int)curX1, (int)curX2, y);
+            curX1 += step13;
+            curX2 += step12;
+        }
+
+        // 4. Parte Inferior: do y2 até y3
+        curX2 = (float)x2; // Reinicia a aresta curta na nova inclinação
+        for (int y = y2; y <= y3; y++) {
+            drawHLine((int)curX1, (int)curX2, y);
+            curX1 += step13;
+            curX2 += step23;
+        }
+    }
+
+    void Renderer2D::Ellipse(int xc, int yc, int rx, int ry, short c, short col) {
+        if (rx <= 0 || ry <= 0) return;
+
+        uint32_t pixelData = (uint32_t)col << 16 | (uint16_t)c;
+        uint32_t* buffer = (uint32_t*)m_targetBuffer;
+
+        // Lambda rápida para pintar 4 pontos simétricos com checagem de limites
+        auto plot4 = [&](int x, int y) {
+            int posX = xc + x, negX = xc - x;
+            int posY = yc + y, negY = yc - y;
+
+            if (posY >= 0 && posY < m_height) {
+                if (posX >= 0 && posX < m_width) buffer[posY * m_width + posX] = pixelData;
+                if (negX >= 0 && negX < m_width) buffer[posY * m_width + negX] = pixelData;
+            }
+            if (negY >= 0 && negY < m_height) {
+                if (posX >= 0 && posX < m_width) buffer[negY * m_width + posX] = pixelData;
+                if (negX >= 0 && negX < m_width) buffer[negY * m_width + negX] = pixelData;
+            }
+        };
+
+        long rx2 = rx * rx;
+        long ry2 = ry * ry;
+        long x = 0;
+        long y = ry;
+        long px = 0;
+        long py = 2 * rx2 * y;
+
+        // Região 1
+        long p = (long)(ry2 - (rx2 * ry) + (0.25 * rx2));
+        while (px < py) {
+            plot4(x, y);
+            x++;
+            px += 2 * ry2;
+            if (p < 0) p += ry2 + px;
+            else {
+                y--;
+                py -= 2 * rx2;
+                p += ry2 + px - py;
+            }
+        }
+
+        // Região 2
+        p = (long)(ry2 * (x + 0.5) * (x + 0.5) + rx2 * (y - 1) * (y - 1) - rx2 * ry2);
+        while (y >= 0) {
+            plot4(x, y);
+            y--;
+            py -= 2 * rx2;
+            if (p > 0) p += rx2 - py;
+            else {
+                x++;
+                px += 2 * ry2;
+                p += rx2 - py + px;
+            }
+        }
+    }
+
+    void Renderer2D::FillEllipse(int xc, int yc, int rx, int ry, short c, short col) {
+        if (rx <= 0 || ry <= 0) return;
+
+        uint32_t pixelData = (uint32_t)col << 16 | (uint16_t)c;
+        uint32_t* buffer = (uint32_t*)m_targetBuffer;
+
+        // Lambda para desenhar uma linha horizontal sólida no buffer
+        auto drawHLine = [&](int x1, int x2, int y) {
+            if (y < 0 || y >= m_height) return;
+            if (x1 > x2) std::swap(x1, x2);
             
-        int t1x, t2x, y, minx, maxx, t1xp, t2xp;
-        bool changed1 = false;
-        bool changed2 = false;
-        int signx1, signx2, dx1, dy1, dx2, dy2;
-        int e1, e2;
-        // Sort vertices
-        if (y1>y2) { SWAP(y1, y2); SWAP(x1, x2); }
-        if (y1>y3) { SWAP(y1, y3); SWAP(x1, x3); }
-        if (y2>y3) { SWAP(y2, y3); SWAP(x2, x3); }
-
-        t1x = t2x = x1; y = y1;   // Starting points
-        dx1 = (int)(x2 - x1); if (dx1<0) { dx1 = -dx1; signx1 = -1; }
-        else signx1 = 1;
-        dy1 = (int)(y2 - y1);
-
-        dx2 = (int)(x3 - x1); if (dx2<0) { dx2 = -dx2; signx2 = -1; }
-        else signx2 = 1;
-        dy2 = (int)(y3 - y1);
-
-        if (dy1 > dx1) {   // swap values
-            SWAP(dx1, dy1);
-            changed1 = true;
-        }
-        if (dy2 > dx2) {   // swap values
-            SWAP(dy2, dx2);
-            changed2 = true;
-        }
-
-        e2 = (int)(dx2 >> 1);
-        // Flat top, just process the second half
-        if (y1 == y2) goto next;
-        e1 = (int)(dx1 >> 1);
-
-        for (int i = 0; i < dx1;) {
-            t1xp = 0; t2xp = 0;
-            if (t1x<t2x) { minx = t1x; maxx = t2x; }
-            else { minx = t2x; maxx = t1x; }
-            // process first line until y value is about to change
-            while (i<dx1) {
-                i++;
-                e1 += dy1;
-                while (e1 >= dx1) {
-                    e1 -= dx1;
-                    if (changed1) t1xp = signx1;//t1x += signx1;
-                    else          goto next1;
-                }
-                if (changed1) break;
-                else t1x += signx1;
+            int left = (std::max)(0, x1);
+            int right = (std::min)(m_width - 1, x2);
+            
+            if (left <= right) {
+                uint32_t* p = &buffer[y * m_width + left];
+                int count = right - left + 1;
+                // Preenchimento linear de memória (Auge da performance)
+                for (int i = 0; i < count; ++i) p[i] = pixelData;
             }
-            // Move line
-        next1:
-            // process second line until y value is about to change
-            while (1) {
-                e2 += dy2;
-                while (e2 >= dx2) {
-                    e2 -= dx2;
-                    if (changed2) t2xp = signx2;//t2x += signx2;
-                    else          goto next2;
-                }
-                if (changed2)     break;
-                else              t2x += signx2;
+        };
+
+        long rx2 = (long)rx * rx;
+        long ry2 = (long)ry * ry;
+        long x = 0;
+        long y = ry;
+        long px = 0;
+        long py = 2 * rx2 * y;
+
+        // Região 1
+        long p = (long)(ry2 - (rx2 * ry) + (0.25 * rx2));
+        while (px < py) {
+            drawHLine(xc - x, xc + x, yc + y);
+            drawHLine(xc - x, xc + x, yc - y);
+
+            x++;
+            px += 2 * ry2;
+            if (p < 0) p += ry2 + px;
+            else {
+                y--;
+                py -= 2 * rx2;
+                p += ry2 + px - py;
             }
-        next2:
-            if (minx>t1x) minx = t1x; if (minx>t2x) minx = t2x;
-            if (maxx<t1x) maxx = t1x; if (maxx<t2x) maxx = t2x;
-            drawline(minx, maxx, y);    // Draw line from min to max points found on the y
-            // Now increase y
-            if (!changed1) t1x += signx1;
-            t1x += t1xp;
-            if (!changed2) t2x += signx2;
-            t2x += t2xp;
-            y += 1;
-            if (y == y2) break;
         }
-    next:
-        // Second half
-        dx1 = (int)(x3 - x2); if (dx1<0) { dx1 = -dx1; signx1 = -1; }
-        else signx1 = 1;
-        dy1 = (int)(y3 - y2);
-        t1x = x2;
 
-        if (dy1 > dx1) {   // swap values
-            SWAP(dy1, dx1);
-            changed1 = true;
-        }
-        else changed1 = false;
+        // Região 2
+        p = (long)(ry2 * (x + 0.5) * (x + 0.5) + rx2 * (y - 1) * (y - 1) - rx2 * ry2);
+        while (y >= 0) {
+            drawHLine(xc - x, xc + x, yc + y);
+            drawHLine(xc - x, xc + x, yc - y);
 
-        e1 = (int)(dx1 >> 1);
-
-        for (int i = 0; i <= dx1; i++) {
-            t1xp = 0; t2xp = 0;
-            if (t1x<t2x) { minx = t1x; maxx = t2x; }
-            else { minx = t2x; maxx = t1x; }
-            // process first line until y value is about to change
-            while (i<dx1) {
-                e1 += dy1;
-                while (e1 >= dx1) {
-                    e1 -= dx1;
-                    if (changed1) { t1xp = signx1; break; }//t1x += signx1;
-                    else          goto next3;
-                }
-                if (changed1) break;
-                else   	   	  t1x += signx1;
-                if (i<dx1) i++;
+            y--;
+            py -= 2 * rx2;
+            if (p > 0) p += rx2 - py;
+            else {
+                x++;
+                px += 2 * ry2;
+                p += rx2 - py + px;
             }
-        next3:
-            // process second line until y value is about to change
-            while (t2x != x3) {
-                e2 += dy2;
-                while (e2 >= dx2) {
-                    e2 -= dx2;
-                    if (changed2) t2xp = signx2;
-                    else          goto next4;
-                }
-                if (changed2)     break;
-                else              t2x += signx2;
-            }
-        next4:
-
-            if (minx>t1x) minx = t1x; if (minx>t2x) minx = t2x;
-            if (maxx<t1x) maxx = t1x; if (maxx<t2x) maxx = t2x;
-            drawline(minx, maxx, y);   										
-            if (!changed1) t1x += signx1;
-            t1x += t1xp;
-            if (!changed2) t2x += signx2;
-            t2x += t2xp;
-            y += 1;
-            if (y>y3) return;
         }
     }
-
-    void Renderer2D::Rect(int x1, int y1, int x2, int y2, short c, short col) {
-        Line(x1, y1, x2 - 1, y1, c, col);           // Top
-        Line(x1, y2 - 1, x2 - 1, y2 - 1, c, col);   // Bottom
-        Line(x1, y1, x1, y2 - 1, c, col);           // Left
-        Line(x2 - 1, y1, x2 - 1, y2 - 1, c, col);   // Right
-    }
-
-    void Renderer2D::FillRect(int x1, int y1, int x2, int y2, short c, short col) {
-        for (int x = x1; x < x2; x++) for (int y = y1; y < y2; y++) Pixel(x, y, c, col);
-    }
-
-    void Renderer2D::Circle(int xc, int yc, int r, short c, short col) {
-        int x = 0;
-        int y = r;
-        int p = 3 - 2 * r;
-        if (!r) return;
-
-        while (y >= x) { // only formulate 1/8 of circle
-            Pixel(xc - x, yc - y, c, col);//upper left left
-            Pixel(xc - y, yc - x, c, col);//upper upper left
-            Pixel(xc + y, yc - x, c, col);//upper upper right
-            Pixel(xc + x, yc - y, c, col);//upper right right
-            Pixel(xc - x, yc + y, c, col);//lower left left
-            Pixel(xc - y, yc + x, c, col);//lower lower left
-            Pixel(xc + y, yc + x, c, col);//lower lower right
-            Pixel(xc + x, yc + y, c, col);//lower right right
-            if (p < 0) p += 4 * x++ + 6;
-            else p += 4 * (x++ - y--) + 10;
-        }
-    }
-
-    void Renderer2D::FillCircle(int xc, int yc, int r, short c, short col) {
-        // Taken from wikipedia
-        int x = 0;
-        int y = r;
-        int p = 3 - 2 * r;
-        if (!r) return;
-
-        auto drawline = [&](int sx, int ex, int ny) { for (int i = sx; i <= ex; i++) Pixel(i, ny, c, col); };
-
-        while (y >= x) {
-            // Modified to draw scan-lines instead of edges
-            drawline(xc - x, xc + x, yc - y);
-            drawline(xc - y, xc + y, yc - x);
-            drawline(xc - x, xc + x, yc + y);
-            drawline(xc - y, xc + y, yc + x);
-            if (p < 0) p += 4 * x++ + 6;
-            else p += 4 * (x++ - y--) + 10;
-        }
-    };
 
     void Renderer2D::Polygon(const std::vector<std::array<int, 2>>& points, short c, short col) {
         if (!m_targetBuffer) return;
@@ -404,8 +448,8 @@ namespace termat::gfx {
 
         const uint8_t* glyph = Font::Tiny5[ch - 32];
 
-        for (int gx = 0; gx < 5; gx++) {
-            for (int gy = 0; gy < 5; gy++) {
+        for (int gy = 0; gy < 5; gy++) {
+            for (int gx = 0; gx < 5; gx++) {
                 if (!(glyph[gy] & (1 << (4 - gx)))) continue;
                 for (int sy = 0; sy < scale; sy++) {
                     for (int sx = 0; sx < scale; sx++) Pixel(x + gx * scale + sx, y + gy * scale + sy, c, col);

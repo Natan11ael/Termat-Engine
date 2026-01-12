@@ -63,7 +63,7 @@ namespace termat::gfx {
         virtual ~Renderer() = default;
 
         void linkTarget(CHAR_INFO* buffer, int w, int h);
-        void Pixel(int x, int y, short c = 0x2588, short col = 0x000F); // Função atômica (2D e 3D)
+        inline void Pixel(int x, int y, short c = 0x2588, short col = 0x000F); // Função atômica (2D e 3D)
     };
 
     // 2D Sub-system
@@ -71,19 +71,19 @@ namespace termat::gfx {
     protected:
     public:
         // Utils
-        void Clip(int &x, int &y);
+        inline void Clip(int &x, int &y);
 
         // 
         void String(int x, int y, std::wstring c, short col = 0x000F);
 
         // Geometric Drawners
-        void Line(int x1, int y1, int x2, int y2, short c = 0x2588, short col = 0x000F);
-        void Triangle(int x1, int y1, int x2, int y2, int x3, int y3, short c = 0x2588, short col = 0x000F);
-        void FillTriangle(int x1, int y1, int x2, int y2, int x3, int y3, short c = 0x2588, short col = 0x000F);
+        void Line(int x0, int y0, int x1, int y1, short c = 0x2588, short col = 0x000F);
         void Rect(int x1, int y1, int x2, int y2, short c = 0x2588, short col = 0x000F);
         void FillRect(int x1, int y1, int x2, int y2, short c = 0x2588, short col = 0x000F);
-        void Circle(int xc, int yc, int r, short c = 0x2588, short col = 0x000F);
-        void FillCircle(int xc, int yc, int r, short c = 0x2588, short col = 0x000F);
+        void Triangle(int x1, int y1, int x2, int y2, int x3, int y3, short c = 0x2588, short col = 0x000F);
+        void FillTriangle(int x1, int y1, int x2, int y2, int x3, int y3, short c = 0x2588, short col = 0x000F);
+        void Ellipse(int xc, int yc, int rx, int ry, short c = 0x2588, short col = 0x000F);
+        void FillEllipse(int xc, int yc, int rx, int ry, short c = 0x2588, short col = 0x000F);
         void Polygon(const std::vector<std::array<int, 2>>& points, short c = 0x2588, short col = 0x000F);
         void FillPolygon(const std::vector<std::pair<int, int>>& pts, short c = 0x2588, short col = 0x000F);
 

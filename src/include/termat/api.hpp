@@ -142,7 +142,7 @@ namespace termat {
             };
 
             // Instancias de Acesso
-            std::array<int, 2> getWindowSize() const { return { m_width, m_height }; }
+            std::array<int, 2> getWindowSize() const { return { m_width - 1, m_height - 1 }; }
 
             // Instancias de Definição
             void setTitle(const std::wstring& title) {
