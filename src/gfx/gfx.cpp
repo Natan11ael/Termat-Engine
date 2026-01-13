@@ -389,70 +389,140 @@ namespace termat::gfx {
         }
     }
 
-    void Renderer2D::Polygon(const std::vector<std::array<int, 2>>& points, short c, short col) {
-        if (!m_targetBuffer) return;
-        if (points.size() < 3) return; // polígono precisa de no mínimo 3 pontos
+    void Renderer2D::Polygon(std::span<int*> points, short c, short col) {
+        const size_t vertex = points.size();
+        if (vertex < 3) return;
 
-        for (size_t i = 0; i < points.size(); i++) {
-            const auto& p1 = points[i];
-            const auto& p2 = points[(i + 1) % points.size()]; // fecha o polígono
+        // 1. Culling de Bounding Box
+        // Acesso: points[i][0] é X, points[i][1] é Y
+        int minX = points[0][0], maxX = points[0][0];
+        int minY = points[0][1], maxY = points[0][1];
+        
+        for (int i = 1; i < vertex; ++i) {
+            int x = points[i][0];
+            int y = points[i][1];
+            if (x < minX) minX = x; else if (x > maxX) maxX = x;
+            if (y < minY) minY = y; else if (y > maxY) maxY = y;
+        }
 
-            Line(p1[0], p1[1], p2[0], p2[1], c, col);
+        if (maxX < 0 || minX >= m_width || maxY < 0 || minY >= m_height) return;
+
+        // 2. Desenho das arestas
+        for (int i = 0; i < vertex - 1; ++i) {
+            Line(points[i][0], points[i][1], points[i+1][0], points[i+1][1], c, col);
+        }
+
+        // Fecha o polígono (último com o primeiro)
+        Line(points[vertex-1][0], points[vertex-1][1], points[0][0], points[0][1], c, col);
+    }
+
+    void Renderer2D::FillPolygon(std::span<int*> points, short c, short col) {
+        const size_t vertex = points.size();
+        if (vertex < 3) return;
+
+        // 1. Bounding Box e Setup de 32 bits
+        int minY = points[0][1], maxY = points[0][1];
+        for (size_t i = 1; i < vertex; ++i) {
+            if (points[i][1] < minY) minY = points[i][1];
+            if (points[i][1] > maxY) maxY = points[i][1];
+        }
+
+        minY = (std::max)(0, minY);
+        maxY = (std::min)(m_height - 1, maxY);
+        if (minY > maxY) return;
+
+        uint32_t pixelData = (uint32_t)col << 16 | (uint16_t)c;
+        uint32_t* buffer = (uint32_t*)m_targetBuffer;
+
+        // Buffer fixo no stack (evita alocação no heap)
+        // 128 nós suportam polígonos de até 128 arestas por scanline
+        int nodes[128]; 
+
+        // 2. Scanline Loop
+        for (int y = minY; y <= maxY; ++y) {
+            int nodeCount = 0;
+
+            for (size_t i = 0; i < vertex; ++i) {
+                size_t j = (i == vertex - 1) ? 0 : i + 1;
+                
+                int y0 = points[i][1], y1 = points[j][1];
+                int x0 = points[i][0], x1 = points[j][0];
+
+                if ((y0 < y && y1 >= y) || (y1 < y && y0 >= y)) {
+                    // Cálculo de intersecção otimizado
+                    // x = x0 + (y - y0) * (x1 - x0) / (y1 - y0)
+                    nodes[nodeCount++] = x0 + (int)((float)(y - y0) * (x1 - x0) / (y1 - y0));
+                    
+                    if (nodeCount >= 128) break; // Segurança de stack
+                }
+            }
+
+            // 3. Ordenação rápida (Insertion Sort é mais rápido que std::sort para N pequeno)
+            for (int i = 1; i < nodeCount; ++i) {
+                int j = i;
+                while (j > 0 && nodes[j - 1] > nodes[j]) {
+                    std::swap(nodes[j - 1], nodes[j]);
+                    j--;
+                }
+            }
+
+            // 4. Preenchimento de Memória Linear
+            for (int i = 0; i < nodeCount; i += 2) {
+                int left = (std::max)(0, nodes[i]);
+                int right = (std::min)(m_width - 1, nodes[i + 1]);
+
+                if (left <= right) {
+                    uint32_t* pRow = &buffer[y * m_width + left];
+                    // Loop de escrita direta (A CPU vetoriza isso automaticamente em 2026)
+                    for (int x = 0; x <= (right - left); ++x) pRow[x] = pixelData;
+                }
+            }
         }
     }
 
-    void Renderer2D::FillPolygon(const std::vector<std::pair<int, int>>& pts, short c, short col) {
-        if (!m_targetBuffer || pts.size() < 3) return;
-
-        // Encontrar limites em Y
-        int minY = pts[0].second;
-        int maxY = pts[0].second;
-
-        for (const auto& p : pts) {
-            if (p.second < minY) minY = p.second;
-            if (p.second > maxY) maxY = p.second;
-        }
-
-        // Scanline
-        for (int y = minY; y <= maxY; y++) {
-            std::vector<int> nodes;
-
-            size_t j = pts.size() - 1;
-            for (size_t i = 0; i < pts.size(); i++) {
-                int x1 = pts[i].first;
-                int y1 = pts[i].second;
-                int x2 = pts[j].first;
-                int y2 = pts[j].second;
-
-                if ((y1 < y && y2 >= y) || (y2 < y && y1 >= y)) {
-                    int x = x1 + (y - y1) * (x2 - x1) / (y2 - y1);
-                    nodes.push_back(x);
-                }
-                j = i;
-            }
-
-            std::sort(nodes.begin(), nodes.end());
-
-            for (size_t i = 0; i + 1 < nodes.size(); i += 2) {
-                for (int x = nodes[i]; x <= nodes[i + 1]; x++) {
-                    Pixel(x, y, c, col);
-                }
-            }
-        }
-    }
-
-    void Renderer2D::Char(int x, int y, wchar_t ch, int scale, int spacing, short c, short col) {
-        if (!m_targetBuffer) return;
-
+    void Renderer2D::Char(int x, int y, wchar_t ch, int scale, short c, short col) {
         if (ch < 32 || ch > 90) ch = L'?';
-
         const uint8_t* glyph = Font::Tiny5[ch - 32];
+        uint32_t pixelData = (uint32_t)col << 16 | (uint16_t)c;
+        uint32_t* buffer = (uint32_t*)m_targetBuffer;
 
         for (int gy = 0; gy < 5; gy++) {
-            for (int gx = 0; gx < 5; gx++) {
-                if (!(glyph[gy] & (1 << (4 - gx)))) continue;
-                for (int sy = 0; sy < scale; sy++) {
-                    for (int sx = 0; sx < scale; sx++) Pixel(x + gx * scale + sx, y + gy * scale + sy, c, col);
+            uint8_t row = glyph[gy];
+            if (!row) continue; // Pula linhas vazias (espaços no glifo)
+
+            int posY = y + (gy * scale);
+            if (posY >= m_height) break;
+
+            // Processa a linha do glifo para encontrar segmentos contínuos
+            for (int gx = 0; gx < 5; ) {
+                if (row & (1 << (4 - gx))) {
+                    int startX = gx;
+                    // Encontra quantos bits consecutivos estão ativos
+                    while (gx < 5 && (row & (1 << (4 - gx)))) {
+                        gx++;
+                    }
+                    
+                    // Desenha o segmento inteiro de uma vez
+                    int drawX = x + (startX * scale);
+                    int width = (gx - startX) * scale;
+                    
+                    // Clipping horizontal rápido
+                    int left = (std::max)(0, drawX);
+                    int right = (std::min)(m_width - 1, drawX + width - 1);
+                    
+                    if (left <= right) {
+                        int count = right - left + 1;
+                        for (int sy = 0; sy < scale; sy++) {
+                            int curY = posY + sy;
+                            if (curY >= 0 && curY < m_height) {
+                                uint32_t* p = &buffer[curY * m_width + left];
+                                // Escrita linear de alta velocidade
+                                for (int i = 0; i < count; ++i) p[i] = pixelData;
+                            }
+                        }
+                    }
+                } else {
+                    gx++;
                 }
             }
         }
@@ -460,18 +530,25 @@ namespace termat::gfx {
 
     void Renderer2D::Text(int x, int y, const std::wstring& text, int scale, int spacing, short c, short col) {
         int cx = x;
+        int charSize = 5 * scale;
+        int advance = charSize + spacing;
 
         for (wchar_t ch : text) {
             if (ch == L'\n') {
                 cx = x;
-                y += (5 * scale) + spacing;
+                y += advance;
                 continue;
             }
 
-            Char(cx, y, ch, scale, spacing, c, col);
-            cx += (5 * scale) + spacing;
+            // Clipping de frustum: se o caractere está totalmente fora da tela, nem processa
+            if (cx < m_width && cx + charSize > 0 && y < m_height && y + charSize > 0) {
+                Char(cx, y, ch, scale, c, col);
+            }
+            
+            cx += advance;
         }
     }
+
 
     void Renderer2D::ImagePPM(const std::wstring& filename, int ox, int oy, int maxW, int maxH ) {
         if (!m_targetBuffer) return;

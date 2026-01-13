@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 #include <array>
+#include <span>
 //
 /// NameSpace Rendering manager
 namespace termat::gfx {
@@ -84,11 +85,11 @@ namespace termat::gfx {
         void FillTriangle(int x1, int y1, int x2, int y2, int x3, int y3, short c = 0x2588, short col = 0x000F);
         void Ellipse(int xc, int yc, int rx, int ry, short c = 0x2588, short col = 0x000F);
         void FillEllipse(int xc, int yc, int rx, int ry, short c = 0x2588, short col = 0x000F);
-        void Polygon(const std::vector<std::array<int, 2>>& points, short c = 0x2588, short col = 0x000F);
-        void FillPolygon(const std::vector<std::pair<int, int>>& pts, short c = 0x2588, short col = 0x000F);
+        void Polygon(std::span<int*> points, short c = 0x2588, short col = 0x000F);
+        void FillPolygon(std::span<int*> points, short c = 0x2588, short col = 0x000F);
 
         // Fonts Drawners
-        void Char(int x, int y, wchar_t ch, int scale = 1, int spacing = 1, short c = 0x2588, short col = 0x000F);
+        void Char(int x, int y, wchar_t ch, int scale = 1, short c = 0x2588, short col = 0x000F);
         void Text(int x, int y, const std::wstring& text, int scale = 1, int spacing = 1, short c = 0x2588, short col = 0x000F);
 
         // Sprite Drawners

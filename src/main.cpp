@@ -40,10 +40,23 @@ public:
         // gfx2D.Ellipse(x*6+7, 3, 2, 2); // ~4 us
         // gfx2D.FillEllipse(x*7+8, 3, 2, 2); // ~4 us
 
-        gfx2D.Polygon({{ 0, 95 },{ 35, 95 },{ 25, 120 },{ 15, 120 }}); // ~70 us
-        // gfx2D.FillPolygon({{ 50, 95 },{ 85, 95 },{ 75, 120 },{ 65, 120 }});  // ~300 us
+        // int ap1[] = {x*8+7, 1};
+        // int ap2[] = {x*8+7, x};
+        // int ap3[] = {x*9+4, x-3};
+        // int ap4[] = {x*9+7, 1};
+        // int* apoints[] = {ap1, ap2, ap3, ap4};
 
-        // gfx2D.Text(15, 35, L"HI", 1, 2); // ~60 us
+        // gfx2D.Polygon(apoints); // ~9 us
+
+        // int bp1[] = {x*9+9, 0};
+        // int bp2[] = {x*9+9, x};
+        // int bp3[] = {x*10+6, x-3};
+        // int bp4[] = {x*10+10, 0};
+        // int* bpoints[] = {bp1, bp2, bp3, bp4};
+
+        // gfx2D.FillPolygon(bpoints); // ~10 us
+
+        gfx2D.Text(x*11+5, 1, L"HI", 2, 2); // ~60 us -> ~40 us
         // gfx2D.ImagePPM(L"Sprite-32x32.ppm", 60, 0); // ~1200 us
         
         // all // ~22 us
@@ -51,7 +64,7 @@ public:
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double, std::micro> duration = end - start;
 
-        const std::wstring str = std::format(L"HELLO WORLD! FRAME:{} Drawner:{}", acc, duration);
+        const std::wstring str = std::format(L"HELLO WORLD! FRAME:{} DRAWNER:{}", acc, duration);
         gfx2D.String(0, 0, str);
     }
 
