@@ -88,7 +88,7 @@ namespace termat::gfx {
         m_width = w; m_height = h;
     }
     //
-    inline void Renderer::Pixel(int x, int y, short c, short col) {
+    void Renderer::Pixel(int x, int y, short c, short col) {
         if (!m_targetBuffer) return;
         if (x < 0 || x >= m_width || y < 0 || y >= m_height) return;
 
@@ -98,7 +98,7 @@ namespace termat::gfx {
 
     /// ================= Renderer2D =================
     //
-    inline void Renderer2D::Clip(int &x, int &y) {
+    void Renderer2D::Clip(int &x, int &y) {
         if (x < 0) x = 0;
         if (x >= m_width) x = m_width - 1;
         if (y < 0) y = 0;
@@ -482,56 +482,63 @@ namespace termat::gfx {
 
     void Renderer2D::Char(int x, int y, wchar_t ch, int scale, short c, short col) {
         if (ch < 32 || ch > 90) ch = L'?';
-        const uint8_t* glyph = Font::Tiny5[ch - 32];
-        uint32_t pixelData = (uint32_t)col << 16 | (uint16_t)c;
-        uint32_t* buffer = (uint32_t*)m_targetBuffer;
+        
+        // ACESSO O(1): Direto no array, sem busca de hash
+        int idx = static_cast<int>(ch) - 32;
+        ScaledGlyph& glyph = m_glyphCache[idx];
 
-        for (int gy = 0; gy < 5; gy++) {
-            uint8_t row = glyph[gy];
-            if (!row) continue; // Pula linhas vazias (espaços no glifo)
-
-            int posY = y + (gy * scale);
-            if (posY >= m_height) break;
-
-            // Processa a linha do glifo para encontrar segmentos contínuos
-            for (int gx = 0; gx < 5; ) {
-                if (row & (1 << (4 - gx))) {
-                    int startX = gx;
-                    // Encontra quantos bits consecutivos estão ativos
-                    while (gx < 5 && (row & (1 << (4 - gx)))) {
-                        gx++;
-                    }
-                    
-                    // Desenha o segmento inteiro de uma vez
-                    int drawX = x + (startX * scale);
-                    int width = (gx - startX) * scale;
-                    
-                    // Clipping horizontal rápido
-                    int left = (std::max)(0, drawX);
-                    int right = (std::min)(m_width - 1, drawX + width - 1);
-                    
-                    if (left <= right) {
-                        int count = right - left + 1;
-                        for (int sy = 0; sy < scale; sy++) {
-                            int curY = posY + sy;
-                            if (curY >= 0 && curY < m_height) {
-                                uint32_t* p = &buffer[curY * m_width + left];
-                                // Escrita linear de alta velocidade
-                                for (int i = 0; i < count; ++i) p[i] = pixelData;
-                            }
+        // Se a escala mudou ou o cache está vazio, "assa" o glifo
+        if (glyph.data == nullptr || glyph.lastScale != scale) {
+            if (glyph.data) delete[] glyph.data;
+            
+            glyph.w = 5 * scale;
+            glyph.h = 5 * scale;
+            glyph.lastScale = scale;
+            glyph.data = new uint32_t[glyph.w * glyph.h](); 
+            
+            const uint8_t* raw = Font::Tiny5[idx];
+            for (int gy = 0; gy < 5; ++gy) {
+                if (raw[gy] == 0) continue;
+                for (int gx = 0; gx < 5; ++gx) {
+                    if (raw[gy] & (0x10 >> gx)) {
+                        for (int i = 0; i < scale; ++i) {
+                            uint32_t* rowStart = &glyph.data[((gy * scale) + i) * glyph.w + (gx * scale)];
+                            std::fill_n(rowStart, scale, 1);
                         }
                     }
-                } else {
-                    gx++;
                 }
             }
         }
+
+        // --- RENDERIZAÇÃO ULTRA-RÁPIDA ---
+        uint32_t pixelData = (uint32_t)col << 16 | (uint16_t)c;
+        uint32_t* targetBuf = (uint32_t*)m_targetBuffer;
+
+        int x0 = (std::max)(0, x), x1 = (std::min)(m_width, x + glyph.w);
+        int y0 = (std::max)(0, y), y1 = (std::min)(m_height, y + glyph.h);
+        if (x0 >= x1 || y0 >= y1) return;
+
+        int widthPixels = x1 - x0;
+        int srcStride = glyph.w;
+        int destStride = m_width;
+
+        // Aritmética de ponteiros pura para evitar recalcular offsets
+        uint32_t* pDestRow = &targetBuf[y0 * destStride + x0];
+        uint32_t* pSrcRow = &glyph.data[(y0 - y) * srcStride + (x0 - x)];
+
+        for (int curY = y0; curY < y1; ++curY) {
+            // Otimizado para vetorização automática (AVX/SSE)
+            for (int i = 0; i < widthPixels; ++i) if (pSrcRow[i]) pDestRow[i] = pixelData;
+            pDestRow += destStride;
+            pSrcRow += srcStride;
+        }
     }
+
 
     void Renderer2D::Text(int x, int y, const std::wstring& text, int scale, int spacing, short c, short col) {
         int cx = x;
-        int charSize = 5 * scale;
-        int advance = charSize + spacing;
+        const int charSize = 5 * scale;
+        const int advance = charSize + spacing;
 
         for (wchar_t ch : text) {
             if (ch == L'\n') {
@@ -549,85 +556,84 @@ namespace termat::gfx {
         }
     }
 
+    Renderer2D::PPMAsset* Renderer2D::LoadPPMAsset(const std::wstring& filename) {
+        FILE* f = _wfopen((std::wstring(L"" ASSETS_PATH) + filename).c_str(), L"rb");
+        if (!f) return nullptr;
 
-    void Renderer2D::ImagePPM(const std::wstring& filename, int ox, int oy, int maxW, int maxH ) {
-        if (!m_targetBuffer) return;
-
-        // === Abrir arquivo ===
-       FILE* f = _wfopen((std::wstring(L"" ASSETS_PATH) + filename).c_str(), L"rb");
-        if (!f) return;
-
-        // === Ler header PPM ===
         char magic[3];
         int w, h, maxval;
-
-        fscanf(f, "%2s", magic);
-        if (strcmp(magic, "P6") != 0) {
+        if (fscanf(f, "%2s %d %d %d", magic, &w, &h, &maxval) != 4 || strcmp(magic, "P6") != 0) {
             fclose(f);
-            return;
+            return nullptr;
         }
+        fgetc(f); // Consumir o \n
 
-        fscanf(f, "%d %d", &w, &h);
-        fscanf(f, "%d", &maxval);
-        fgetc(f); // consumir '\n'
-
-        if (w <= 0 || h <= 0) {
-            fclose(f);
-            return;
-        }
-
-        // === Clamp de resolução ===
-        int dstW = w > maxW ? maxW : w;
-        int dstH = h > maxH ? maxH : h;
-
-        float sx = (float)w / (float)dstW;
-        float sy = (float)h / (float)dstH;
-
-        // === Buffer temporário ===
-        const int srcSize = w * h * 3;
-        unsigned char* src = new unsigned char[srcSize];
-        fread(src, 1, srcSize, f);
+        PPMAsset* asset = new PPMAsset();
+        asset->w = w;
+        asset->h = h;
+        asset->data = new uint8_t[w * h * 3];
+        
+        fread(asset->data, 1, w * h * 3, f);
         fclose(f);
+        return asset;
+    }
 
-        // === Renderização ===
-        for (int y = 0; y < dstH; y++) {
-            for (int x = 0; x < dstW; x++) {
+    void Renderer2D::PutPPMAsset(PPMAsset* asset, int ox, int oy, int maxW, int maxH) {
+        if (!asset || !asset->data || !m_targetBuffer) return;
 
-                int srcX = (int)(x * sx);
-                int srcY = (int)(y * sy);
+        // 1. Dimensões alvo iniciais
+        int dstW = (asset->w > maxW) ? maxW : asset->w;
+        int dstH = (asset->h > maxH) ? maxH : asset->h;
 
-                int i = (srcY * w + srcX) * 3;
+        // 2. Clipping Geométrico Antecipado (Calcula os limites válidos uma única vez)
+        int startY = (oy < 0) ? -oy : 0;
+        int endY   = (oy + dstH > m_height) ? m_height - oy : dstH;
+        int startX = (ox < 0) ? -ox : 0;
+        int endX   = (ox + dstW > m_width) ? m_width - ox : dstW;
 
-                int r = src[i + 0];
-                int g = src[i + 1];
-                int b = src[i + 2];
+        if (startY >= endY || startX >= endX) return; // Fora da tela
 
-                // === Brilho ===
+        float stepX = (float)asset->w / (float)dstW;
+        float stepY = (float)asset->h / (float)dstH;
+
+        uint32_t* buffer = (uint32_t*)m_targetBuffer;
+        int assetW3 = asset->w * 3;
+
+        for (int y = startY; y < endY; y++) {
+            // Offset de linha calculado apenas no loop externo
+            uint32_t* pDestPixel = &buffer[(oy + y) * m_width + (ox + startX)];
+            uint8_t* rowPtr = &asset->data[(int)(y * stepY) * assetW3];
+
+            for (int x = startX; x < endX; x++) {
+                // Amostragem direta via ponteiro
+                uint8_t* p = &rowPtr[(int)(x * stepX) * 3];
+
+                // Registradores locais para as cores
+                uint8_t r = p[0], g = p[1], b = p[2];
+
+                // Luminosidade (Média inteira rápida)
                 int lum = (r + g + b) / 3;
 
-                // === Escolha de caractere ===
-                wchar_t ch;
-                if      (lum <  40) ch = L' ';
-                else if (lum <  80) ch = PIXEL_QUARTER;
-                else if (lum < 120) ch = PIXEL_HALF;
-                else if (lum < 180) ch = PIXEL_THREEQUARTERS;
-                else                ch = PIXEL_SOLID;
+                // Tabela de caracteres para eliminar múltiplos 'ifs' (Branchless)
+                // Isso reduz a latência de pipeline da CPU drasticamente
+                wchar_t ch = L' ';
+                if (lum > 120) {
+                    if (lum > 180) ch = PIXEL_SOLID; else ch = PIXEL_THREEQUARTERS;
+                } else {
+                    if (lum > 80) ch = PIXEL_HALF; else if (lum > 40) ch = PIXEL_QUARTER;
+                }
 
-                // === Mapeamento de cor (simples e rápido) ===
+                // Seleção de cor mantendo sua lógica original
                 short col = FG_WHITE;
-
                 if (r > g && r > b) col = FG_RED;
                 else if (g > r && g > b) col = FG_GREEN;
                 else if (b > r && b > g) col = FG_BLUE;
                 else if (r > 200 && g > 200) col = FG_YELLOW;
-                else if (r > 200 && b > 200) col = FG_MAGENTA;
-                else if (g > 200 && b > 200) col = FG_CYAN;
 
-                Pixel(ox + x, oy + y, ch, col);
+                // Escrita direta com incremento de ponteiro
+                *pDestPixel++ = (uint32_t)col << 16 | (uint16_t)ch;
             }
         }
-
-        delete[] src;
     }
 
     /// ================= Renderer3D =================

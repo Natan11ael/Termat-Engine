@@ -4,6 +4,8 @@
 //
 /// Resource imports
 #include <windows.h>
+#include <unordered_map>
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <array>
@@ -64,15 +66,36 @@ namespace termat::gfx {
         virtual ~Renderer() = default;
 
         void linkTarget(CHAR_INFO* buffer, int w, int h);
-        inline void Pixel(int x, int y, short c = 0x2588, short col = 0x000F); // Função atômica (2D e 3D)
+        void Pixel(int x, int y, short c = 0x2588, short col = 0x000F); // Função atômica (2D e 3D)
     };
 
     // 2D Sub-system
     class Renderer2D : public Renderer {
     protected:
+        // Cache de glifos escalonados para evitar loops de bit-masking no loop de renderização
+        struct ScaledGlyph {
+            uint32_t* data = nullptr; // Ponteiro bruto para performance
+            int w = 0, h = 0;
+            int lastScale = 0; 
+        };
+
+        // Array fixo para caracteres 32-90. 
+        // O índice é (ch - 32), suportando múltiplas escalas em uma matriz simples ou lista.
+        // Para simplificar, este exemplo foca na escala atual.
+        ScaledGlyph m_glyphCache[64]; // Chave: (ch << 32 | scale)
+        
     public:
+        //
+        struct PPMAsset {
+            uint8_t* data = nullptr;
+            int w = 0;
+            int h = 0;
+
+            ~PPMAsset() { delete[] data; }
+        };
+
         // Utils
-        inline void Clip(int &x, int &y);
+        void Clip(int &x, int &y);
 
         // 
         void String(int x, int y, std::wstring c, short col = 0x000F);
@@ -93,7 +116,8 @@ namespace termat::gfx {
         void Text(int x, int y, const std::wstring& text, int scale = 1, int spacing = 1, short c = 0x2588, short col = 0x000F);
 
         // Sprite Drawners
-        void ImagePPM(const std::wstring& filename, int ox, int oy, int maxW = 128, int maxH = 128);
+        PPMAsset* LoadPPMAsset(const std::wstring& filename);
+        void PutPPMAsset(PPMAsset* asset, int ox, int oy, int maxW = 128, int maxH = 128);
     };
 
     // 3D Sub-system
