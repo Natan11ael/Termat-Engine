@@ -23,7 +23,7 @@
 /// Public Imports
 #include<termat/core.hpp>
 #include<termat/debug.hpp>
-#include<termat/gfx.hpp>
+#include<termat/gfx.hpp>   // em real uso
 #include<termat/input.hpp>
 #include<termat/net.hpp>
 #include<termat/res.hpp>

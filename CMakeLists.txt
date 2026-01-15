@@ -17,7 +17,7 @@ include_directories(${CMAKE_SOURCE_DIR}/src/include)
 # --- Engine library (static)
 file(GLOB_RECURSE ENGINE_SOURCES
     ${CMAKE_SOURCE_DIR}/src/core/*.cpp
-    ${CMAKE_SOURCE_DIR}/src/gfx/*.cpp
+    ${CMAKE_SOURCE_DIR}/src/gfx/*.cpp   # -- em uso
     ${CMAKE_SOURCE_DIR}/src/input/*.cpp
     ${CMAKE_SOURCE_DIR}/src/scene/*.cpp
     ${CMAKE_SOURCE_DIR}/src/res/*.cpp
@@ -26,6 +26,9 @@ file(GLOB_RECURSE ENGINE_SOURCES
 )
 
 add_library(termat STATIC ${ENGINE_SOURCES})
+target_include_directories(termat PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
 target_include_directories(termat PUBLIC
     ${CMAKE_SOURCE_DIR}/src/include
 )
@@ -35,6 +38,7 @@ target_compile_definitions(termat PUBLIC
 
 # --- Executável do usuário
 add_executable(main ${CMAKE_SOURCE_DIR}/src/main.cpp)
+target_include_directories(main PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(main PRIVATE termat)
 
 # Força saída organizada para builds multi-config (Visual Studio)
